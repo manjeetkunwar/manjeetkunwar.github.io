@@ -1,0 +1,176 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Splitting Cascade Simulation</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        canvas {
+            display: block;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            background-color: #0c121e;
+            border: 1px solid #334155;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="flex flex-col items-center w-full max-w-2xl gap-4">
+        <h1 class="text-3xl font-bold text-center text-indigo-300">Photon Splitting Cascade</h1>
+        <p class="text-center text-slate-400">
+            A step-by-step simulation of a photon splitting cascade. Each step represents a new generation of split photons.
+        </p>
+        
+        <div id="canvas-container" class="w-full h-[600px] flex items-center justify-center p-2 rounded-2xl bg-slate-800 border border-slate-700">
+            <!-- p5.js canvas will be injected here -->
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 w-full justify-center">
+            <button id="stepBtn" class="px-6 py-3 font-semibold text-white transition-all duration-300 transform bg-indigo-600 rounded-full shadow-lg hover:scale-105 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                Step
+            </button>
+            <button id="resetBtn" class="px-6 py-3 font-semibold text-indigo-400 transition-all duration-300 transform bg-slate-700 rounded-full shadow-lg hover:scale-105 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                Reset
+            </button>
+        </div>
+        
+        <div id="status" class="w-full p-4 mt-4 text-center rounded-xl bg-slate-800 border border-slate-700">
+            <p id="photonCount" class="text-lg font-medium text-indigo-300">Photons: 1</p>
+            <p id="currentEnergy" class="text-slate-400">Total Energy: 1.0e+05 GeV</p>
+        </div>
+    </div>
+
+    <!-- p5.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script>
+        // --- Simulation Parameters (from user's code) ---
+        const E0 = 1e5;     // Initial photon energy in GeV
+        const Emin = 50;    // Cutoff energy (GeV)
+        const p_split = 0.3;  // Probability per step that a photon splits
+
+        // --- Simulation State ---
+        let particles = [];
+        let history = [];
+        let totalEnergy = E0;
+        let isRunning = false;
+        
+        const sketch = (p) => {
+            const canvasWidth = 600;
+            const canvasHeight = 600;
+            const y_scale = 0.05; // Adjusts vertical spacing
+
+            class Particle {
+                constructor(x, y, energy, angle, parent) {
+                    this.x = x;
+                    this.y = y;
+                    this.energy = energy;
+                    this.angle = angle;
+                    this.parent = parent; // Keep track of parent for drawing
+                }
+            }
+
+            p.setup = () => {
+                const canvas = p.createCanvas(canvasWidth, canvasHeight);
+                canvas.parent('canvas-container');
+                p.resetSimulation();
+            };
+
+            p.draw = () => {
+                p.background('#0c121e');
+                p.stroke(255, 0, 0, 180); // Red, slightly transparent
+                p.strokeWeight(1.5);
+                p.noFill();
+
+                // Draw all history
+                for (let i = 0; i < history.length; i++) {
+                    const track = history[i];
+                    p.line(track.x1, track.y1, track.x2, track.y2);
+                }
+
+                // Update status display
+                document.getElementById('photonCount').innerText = `Photons: ${particles.length}`;
+                document.getElementById('currentEnergy').innerText = `Total Energy: ${totalEnergy.toExponential(2)} GeV`;
+            };
+
+            p.resetSimulation = () => {
+                particles = [new Particle(canvasWidth / 2, 50, E0, 0, null)];
+                history = [];
+                totalEnergy = E0;
+                isRunning = true;
+                document.getElementById('stepBtn').disabled = false;
+            };
+
+            p.stepSimulation = () => {
+                if (!isRunning) return;
+
+                const nextParticles = [];
+                let newEnergy = 0;
+
+                // Process each existing particle
+                particles.forEach(photon => {
+                    if (photon.energy < Emin) {
+                        // Below cutoff, just record and stop
+                        const nextY = photon.y + photon.energy * y_scale; // Stop short
+                        history.push({ x1: photon.x, y1: photon.y, x2: photon.x, y2: nextY });
+                        return;
+                    }
+
+                    // Calculate next position
+                    const stepLength = p.map(photon.energy, E0, Emin, 100, 20); // Longer steps for higher energy
+                    const nextX = photon.x + stepLength * Math.sin(photon.angle);
+                    const nextY = photon.y + stepLength * Math.cos(photon.angle);
+
+                    // Record track
+                    history.push({ x1: photon.x, y1: photon.y, x2: nextX, y2: nextY });
+
+                    // Decide: split or continue
+                    if (p.random() < p_split) {
+                        // Split event
+                        const frac = p.random(0.3, 0.7); // Asymmetric energy sharing for visual variation
+                        const E1 = frac * photon.energy;
+                        const E2 = (1 - frac) * photon.energy;
+                        const dtheta = p.random(-0.5, 0.5); // Opening angle in radians
+
+                        nextParticles.push(new Particle(nextX, nextY, E1, photon.angle + dtheta, photon));
+                        nextParticles.push(new Particle(nextX, nextY, E2, photon.angle - dtheta, photon));
+                        newEnergy += E1 + E2;
+                    } else {
+                        // Propagate further
+                        nextParticles.push(new Particle(nextX, nextY, photon.energy, photon.angle, photon));
+                        newEnergy += photon.energy;
+                    }
+                });
+
+                particles = nextParticles;
+                totalEnergy = newEnergy;
+
+                // Stop condition
+                if (particles.length === 0 || totalEnergy < Emin) {
+                    isRunning = false;
+                    document.getElementById('stepBtn').disabled = true;
+                }
+            };
+        };
+
+        const p5Instance = new p5(sketch);
+
+        document.getElementById('stepBtn').addEventListener('click', () => {
+            p5Instance.stepSimulation();
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            p5Instance.resetSimulation();
+        });
+
+    </script>
+</body>
+</html>
